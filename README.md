@@ -34,12 +34,6 @@ Once installed, a small dot appears at the top-right of the page:
 
 Hover over the dot to see a **tooltip** showing your current bypass status.
 
----
-
-## 📦 Installation
-1. Install [**Tampermonkey**](https://www.tampermonkey.net/) or [**Violentmonkey**](https://violentmonkey.github.io/).
-2. **[Click here to Install AgebypassX](https://greasyfork.org/en/scripts/547244-agebypassx-tampermonkey-edition/code/AgebypassX.user.js)**.
-3. Refresh **X/Twitter** and enjoy unrestricted content — **privately**.
 
 ---
 
