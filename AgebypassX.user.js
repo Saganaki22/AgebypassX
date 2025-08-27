@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgebypassX – Tampermonkey Edition
 // @namespace    https://github.com/Saganaki22/AgebypassX
-// @version      1.3
+// @version      1.2
 // @description  Bypass Twitter/X age restrictions and always allow sensitive media viewing — fully privacy-friendly and secure.
 // @author       Saganaki22
 // @license      MIT
