@@ -1,5 +1,5 @@
 # 🛡️ AgebypassX – Webpack Edition v1.3.0  
-Bypass **Twitter/X**'s age restrictions and unlock **sensitive media** — all **without tracking, logging, or compromising your privacy**.
+Bypass **Twitter/X**'s age restrictions and unlock **sensitive media** — all **without compromising your privacy**.
 
 AgebypassX v1.3.0 uses **modern webpack chunk interception** to work with X.com's latest architecture. It works **100% locally** in your browser, doesn't collect data, send requests to external servers, or modify your account.  
 Your browsing experience remains **fully private**.
