@@ -2,7 +2,7 @@
 // @name         AgebypassX – Webpack Edition
 // @namespace    https://github.com/Saganaki22/AgebypassX
 // @version      1.3.0
-// @description  Modern age bypass for X.com using webpack chunk interception needs VPN
+// @description  Modern age bypass for X.com using webpack chunk interception
 // @author       Saganaki22
 // @license      MIT
 // @match        https://x.com/*
@@ -158,7 +158,7 @@
 
     dot.addEventListener('click', () => {
         alert(
-            `AgebypassX v3.0.0\n` +
+            `AgebypassX v1.3.0\n` +
             `Status: ${STATE.isPatched ? 'ACTIVE' : 'FAILED'}\n` +
             `Webpack: ${STATE.webpackHooked ? 'Hooked' : 'Not hooked'}\n` +
             `Intercepts: ${STATE.interceptCount}\n` +
@@ -344,7 +344,7 @@
     window.AgebypassX = {
         state: STATE,
         config: CONFIG,
-        version: '3.0.0',
+        version: '1.3.0',
         forceWebpackCheck: setupWebpackHook,
         showStatus: () => alert(`AgebypassX v3.0: ${STATE.isPatched ? 'ACTIVE' : 'FAILED'}`),
     };
