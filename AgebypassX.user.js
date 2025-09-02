@@ -2,7 +2,7 @@
 // @name         AgebypassX – Webpack Edition
 // @namespace    https://github.com/Saganaki22/AgebypassX
 // @version      1.3.0
-// @description  Modern age bypass for X.com using webpack chunk interception
+// @description  Modern age bypass for X.com using webpack chunk interception needs VPN
 // @author       Saganaki22
 // @license      MIT
 // @match        https://x.com/*
