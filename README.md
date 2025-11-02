@@ -1,39 +1,13 @@
-# 🛡️ AgebypassX – Webpack Edition v1.3.0  
+# 🛡️ AgebypassX – v2.0.0  
 Bypass **Twitter/X**'s age restrictions and unlock **sensitive media** — all **without compromising your privacy**.
 
-AgebypassX v1.3.0 uses **modern webpack chunk interception** to work with X.com's latest architecture. It works **100% locally** in your browser, doesn't collect data, send requests to external servers, or modify your account.  
-Your browsing experience remains **fully private**.
-
-> **⚠️ Important Notice**  
-> - You **must use a VPN** and set your **country outside of the UK**.  
-> - **Ensure your DNS is not resolving through the UK** — it should be **managed by your VPN**.  
-> - **Clear your cookies** and **log out of your X/Twitter session** in the browser **before enabling the script**.  
-> - Only tested and verified on **Chromium-based browsers** (e.g., Chrome, Edge, Brave, Opera).  
-
 ---
 
-## 🚀 Quick Setup Guide (Recommended)
-1. **Enable a VPN** and set your location **outside of the UK**.  
-2. Verify your **DNS is also handled by the VPN** — avoid UK-based DNS servers.  
-3. **Log out** of your X/Twitter account.  
-4. **Clear cookies and cache** in your browser for X/Twitter.  
-5. Install **Tampermonkey** (if not already installed).  
-6. Install the **AgebypassX** userscript.  
-7. Reopen X/Twitter — the **green indicator dot** should appear if everything is set up correctly. ✅  
+## 🚀 Quick Setup Guide (Recommended) 
+1. Install **Tampermonkey** (if not already installed).  
+2. Install the **AgebypassX** userscript.  
+3. Reopen X/Twitter — the **green indicator dot** should appear if everything is set up correctly. ✅  
 
----
-
-## ✨ Features v1.3.0
-- ✅ **Modern webpack chunk interception** → Works with X.com's latest architecture  
-- ✅ **Bypass age restrictions** on X/Twitter  
-- ✅ **Always enable sensitive media viewing** (adult, violent, other content)  
-- ✅ **Enhanced status tracking** → Detailed statistics and debug information  
-- ✅ **Privacy-first** → No tracking, no external requests, no data collection  
-- ✅ **Lightweight & fast** → Pure JavaScript, optimized for performance  
-- ✅ **Advanced status indicator** → Animated states (pending/active/failed)  
-- ✅ **Rich tooltip** → Shows intercepts, patches, webpack status, and last activity  
-- ✅ **Network request fallback** → GraphQL query interception as backup method  
-- ✅ **Debug API** → `window.AgebypassX` for advanced troubleshooting  
 
 ---
 
@@ -48,14 +22,14 @@ Your privacy stays protected. 🛡️
 
 ---
 
-## 📸 How It Works v1.3.0
+## 📸 How It Works 
 Once installed, a small **animated dot** appears at the top-right of the page:
 - 🟠 **Orange Dot (Pulsing)** → Script is **initializing** and searching for webpack chunks  
 - 🟢 **Green Dot** → Script is **active** and successfully patched sensitive media settings ✅  
 - 🔴 **Red Dot** → Failed to hook webpack or find sensitive media modules ❌  
 
 **Enhanced Tooltip** (hover over dot):
-- Shows **AgebypassX v1.3.0** version info
+- Shows **AgebypassX v2.0.0** version info
 - **Status**: Active/Failed with detailed reason
 - **Webpack**: Hook status (Hooked/Not hooked)  
 - **Intercepts**: Number of webpack chunks intercepted
@@ -139,7 +113,9 @@ Visit the GitHub repository:
 
 ## 🔄 Version History
 
-### v1.3.0 (Latest) - Webpack Edition
+### v2.0.0 - Simplified
+
+### v1.3.0  - Webpack Edition
 - **🆕 Modern Architecture**: Completely rewritten to use webpack chunk interception
 - **🎯 Enhanced Detection**: Targets `SensitiveMediaSettingsQuery` and related modules
 - **📊 Advanced Status**: Detailed statistics, debug API, and enhanced tooltips
