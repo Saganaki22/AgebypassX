@@ -1,4 +1,4 @@
-# 🛡️ AgebypassX – v2.0.0  
+# 🛡️ AgebypassX – v2.2.0 (Updated 02.02.2026) 
 Bypass **Twitter/X**'s age restrictions and unlock **sensitive media** — all **without compromising your privacy**.
 
 ---
@@ -113,9 +113,13 @@ Visit the GitHub repository:
 
 ## 🔄 Version History
 
-### v2.0.0 - Simplified
+### v2.2.0 - 02.02.2026
+- **🆕 GraphQL Interception**: Direct hijacking of `JSON.parse` to strip sensitivity and interstitial flags from incoming data.
+- **🎯 Dynamic Patching**: Recursive state patcher targeting both `__INITIAL_STATE__` and late-loading UI components.
+- **⚡ Birthdate Spoofing**: Automatically sets account age in initial state to ensure "adult" status.
+- **🛠️ Minimalist Engine**: Stripped down logic to ensure zero site loading lag or crashes.
 
-### v1.3.0  - Webpack Edition
+### v1.3.0 - Webpack Edition
 - **🆕 Modern Architecture**: Completely rewritten to use webpack chunk interception
 - **🎯 Enhanced Detection**: Targets `SensitiveMediaSettingsQuery` and related modules
 - **📊 Advanced Status**: Detailed statistics, debug API, and enhanced tooltips
