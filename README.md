@@ -1,5 +1,5 @@
-# 🛡️ AgebypassX – v2.2.0 (Updated 02.02.2026) 
-Bypass **Twitter/X**'s age restrictions and unlock **sensitive media** — all **without compromising your privacy**.
+# 🛡️ AgebypassX – v2.2.0 (Updated 02.02.2026)
+Bypass **Twitter/X**'s age restrictions and unlock **sensitive media** — quietly and locally.
 
 ---
 
@@ -11,130 +11,78 @@ Bypass **Twitter/X**'s age restrictions and unlock **sensitive media** — all *
 
 ---
 
-## 🔒 Privacy Matters
-Unlike other bypass scripts, **AgebypassX**:
-- **Does NOT** send your data anywhere.
-- **Does NOT** modify your account or cookies.
-- **Does NOT** include analytics, ads, or tracking.
-- Everything runs **locally** via Tampermonkey.
+## 🔒 Privacy
+- **Runs locally** in your browser; **no data is sent** anywhere.
+- Does **not** modify your account, cookies, or perform any tracking.
 
-Your privacy stays protected. 🛡️
+Your privacy remains intact. 🛡️
 
 ---
 
-## 📸 How It Works 
-Once installed, a small **animated dot** appears at the top-right of the page:
-- 🟠 **Orange Dot (Pulsing)** → Script is **initializing** and searching for webpack chunks  
-- 🟢 **Green Dot** → Script is **active** and successfully patched sensitive media settings ✅  
-- 🔴 **Red Dot** → Failed to hook webpack or find sensitive media modules ❌  
+## 📸 How It Works
+AgebypassX applies a minimal, privacy-focused set of patches directly in the page context:
 
-**Enhanced Tooltip** (hover over dot):
-- Shows **AgebypassX v2.0.0** version info
-- **Status**: Active/Failed with detailed reason
-- **Webpack**: Hook status (Hooked/Not hooked)  
-- **Intercepts**: Number of webpack chunks intercepted
-- **Patches**: Number of successful patches applied
-- **Last**: Timestamp of most recent patch
+- **Intercepts assignments to** `window.__INITIAL_STATE__` using a setter and **patches the object** as it is stored.
+- **Overrides `JSON.parse`** so parsed GraphQL/JSON payloads are patched before site code consumes them.
+- **Recursively walks state objects** and updates known flags and values (see list below).
+- **Spoofs birthdate** fields found in state to an adult year (1990-01-01) to prevent age gating.
 
-**Debug Console** (for troubleshooting):
+Patched flags (when present):
+- `rweb_age_assurance_flow_enabled` → false
+- `age_verification_gate_enabled` → false
+- `sensitive_tweet_warnings_enabled` → false
+- `sensitive_media_settings_enabled` → true
+- `grok_settings_age_restriction_enabled` → false
+- `rweb_mvr_blurred_media_interstitial_enabled` → false
+
+If a flag is stored as an object with a `value` property, the script updates that `value` instead of overwriting the object.
+
+---
+
+## ✅ Verify the Script
+Open developer tools (Console) on X/Twitter and run a quick check:
+
 ```javascript
-// Enable debug logging
-window.AgebypassX.config.debug = true;
+// Example: JSON.parse interception should patch the object
+const test = JSON.parse('{"sensitive_media_settings_enabled": false, "birthdate": {"year": 2008, "month": 1, "day": 1}}');
+console.log(test);
+// Expect: test.sensitive_media_settings_enabled === true
+// Expect: test.birthdate.year === 1990
 
-// Check current status
-window.AgebypassX.state;
-
-// Force webpack re-check
-window.AgebypassX.forceWebpackCheck();
+// Or inspect the initial state (if present)
+console.log(window.__INITIAL_STATE__);
 ```
 
 ---
 
-## 🛠️ Troubleshooting v1.3.0
-
-### Basic Issues
-- If the indicator dot is **red**, reload the page and check console for errors
-- Ensure Tampermonkey is **enabled** and script is **active**
-- Use a **VPN** and set your location **outside of the UK**
-- Make sure your **DNS is handled by the VPN** — avoid UK-based DNS
-- **Clear your cookies** and **log out** of your X/Twitter session before enabling the script
-- Tested only on **Chromium-based browsers** — other browsers may not work
-
-### Advanced Debugging (v1.3.0)
-1. **Enable Debug Mode**:
-   ```javascript
-   // In browser console on X.com
-   window.AgebypassX.config.debug = true;
-   ```
-
-2. **Check Status**:
-   ```javascript
-   // View detailed status
-   console.log(window.AgebypassX.state);
-   ```
-
-3. **Common Issues**:
-   - **"Webpack: Not hooked"** → X.com's webpack chunks not found (try refreshing)
-   - **"Intercepts: 0"** → No webpack chunks being loaded (check if logged in)
-   - **"Patches: 0"** → Sensitive media modules not found (X.com may have changed structure)
-
-4. **Force Re-check**:
-   ```javascript
-   // Manually trigger webpack hook attempt
-   window.AgebypassX.forceWebpackCheck();
-   ```
-
-### Reporting Issues
-For bug reports, [**open a GitHub issue**](https://github.com/Saganaki22/AgebypassX/issues) and include:
-- Browser version and type
-- Console error messages (with debug enabled)
-- Screenshot of status tooltip
+## 🛠️ Troubleshooting
+- Make sure **Tampermonkey is enabled** and the script is **active**.
+- Script runs at `document-start`; **reload the page** to ensure it runs before X's scripts execute.
+- If behavior changes or patches stop applying, X/Twitter may have changed internal keys or structure — please open an issue with relevant console output and browser details.
 
 ---
 
-## 🧑‍💻 Source Code
-Open-source and fully transparent:  
-🔗 [https://github.com/Saganaki22/AgebypassX](https://github.com/Saganaki22/AgebypassX)
+## 🧑‍💻 Source & Issues
+Open-source and auditable:  
+🔗 https://github.com/Saganaki22/AgebypassX
+
+Report issues at: https://github.com/Saganaki22/AgebypassX/issues
 
 ---
 
 ## 📜 License
-Licensed under the [MIT License](https://opensource.org/licenses/MIT).  
-Free to audit, fork, and improve.
+Licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
 ---
 
-## ⭐ Support
-💡 Have feedback, feature requests, or just want to support the project?  
-Visit the GitHub repository:  
-🔗 **[https://github.com/Saganaki22/AgebypassX](https://github.com/Saganaki22/AgebypassX)**
-
----
-
-## 🔄 Version History
+## 🔄 Version Highlights
 
 ### v2.2.0 - 02.02.2026
-- **🆕 GraphQL Interception**: Direct hijacking of `JSON.parse` to strip sensitivity and interstitial flags from incoming data.
-- **🎯 Dynamic Patching**: Recursive state patcher targeting both `__INITIAL_STATE__` and late-loading UI components.
-- **⚡ Birthdate Spoofing**: Automatically sets account age in initial state to ensure "adult" status.
-- **🛠️ Minimalist Engine**: Stripped down logic to ensure zero site loading lag or crashes.
+- **JSON.parse interception** to sanitize incoming JSON/GraphQL payloads.
+- **Recursive `__INITIAL_STATE__` patching** to remove age gates and enable sensitive media.
+- **Birthdate spoofing** to ensure an adult age is present in patched state.
+- **Minimal, privacy-first implementation** with no telemetry or UI injection.
 
-### v1.3.0 - Webpack Edition
-- **🆕 Modern Architecture**: Completely rewritten to use webpack chunk interception
-- **🎯 Enhanced Detection**: Targets `SensitiveMediaSettingsQuery` and related modules
-- **📊 Advanced Status**: Detailed statistics, debug API, and enhanced tooltips
-- **🔧 Multiple Fallbacks**: Network request hooking and GraphQL query interception
-- **🎨 Better UI**: Animated status indicator with rich hover information
-- **🐛 Improved Debugging**: Console API and comprehensive error reporting
+---
 
-### v1.2 - Enhanced Edition  
-- Configuration system and state management
-- Multiple patching strategies and UI improvements
-- Privacy warning removal and SPA navigation handling
-
-### v1.1 - Reliability Update
-- Added fallback methods and enhanced error handling
-- Multiple patch targets for better coverage
-
-### v1.0 - Original
-- Basic age bypass functionality with simple status indicator
+*If you need additional features (UI, debugging API, or more flexible configuration), please open an issue or contribute via a PR.*
