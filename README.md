@@ -1,4 +1,4 @@
-# 🛡️ AgebypassX – v2.0.0  
+# 🛡️ AgebypassX – v2.1.0  
 Bypass **Twitter/X**'s age restrictions and unlock **sensitive media** — all **without compromising your privacy**.
 
 ---
