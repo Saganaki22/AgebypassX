@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AgebypassX
 // @namespace    https://github.com/Saganaki22/AgebypassX
-// @version      2.4.0
+// @version      2.4.1
 // @description  Age/sensitive-media bypass for X.com via initial-state and JSON feature-switch patching (Alt+. toggles the dot indicator; click it for diagnostics)
 // @author       Saganaki22
 // @license      MIT
@@ -19,10 +19,10 @@
 
 (function() {
     'use strict';
-
+    
     // GM_info stays available under @grant none in Tampermonkey and
     // Violentmonkey; the typeof guard covers managers where it isn't.
-    let VERSION = '2.4.0';
+    let VERSION = '2.4.1';
     try {
         if (typeof GM_info !== 'undefined' && GM_info && GM_info.script && GM_info.script.version) {
             VERSION = GM_info.script.version;
@@ -50,6 +50,7 @@
     // generous: a false negative here silently skips patching, while a
     // false positive only costs one walk.
     const JSON_SCAN_DEPTH = 5;
+    const DEFAULT_WALK_DEPTH = 30;
 
     const MAX_ERROR_LOG = 20;
     const MAX_UNKNOWN_LOG = 50;
@@ -63,6 +64,7 @@
     // The dot reflects hook/traversal health only. Individual target-flag
     // writes that throw or don't stick are recorded in stats.writeFailed
     // (diagnostics), not as traversal failures.
+    // 
     // -----------------------------------------------------------------------
     const status = { ok: true, errors: 0 };
 
@@ -122,6 +124,8 @@
         return typeof text === 'string' && GATE_RE.test(text);
     }
 
+    const hasOwn = Object.prototype.hasOwnProperty;
+
     function objectMayContainFlags(obj, depth) {
         if (!obj || typeof obj !== 'object' || depth < 0) return false;
 
@@ -129,7 +133,8 @@
         try { keys = Object.keys(obj); } catch (e) { return false; }
 
         for (let i = 0; i < keys.length; i++) {
-            if (keys[i] in flags || keys[i] === 'birthdate' || keys[i] === 'featureSwitch') {
+            const k = keys[i];
+            if (hasOwn.call(flags, k) || k === 'birthdate' || k === 'featureSwitch') {
                 return true;
             }
         }
@@ -210,37 +215,47 @@
     }
 
     function mountIndicator() {
-        const root = document.documentElement;
-        if (!root) { setTimeout(mountIndicator, 10); return; }
+        const target = document.head || document.body || document.documentElement;
+        if (!target) {
+            setTimeout(mountIndicator, 10);
+            return;
+        }
 
         if (!document.getElementById('nox-indicator-style')) {
             const style = document.createElement('style');
             style.id = 'nox-indicator-style';
             style.textContent = CSS;
-            root.appendChild(style);
+            target.appendChild(style);
         }
 
+        const bodyTarget = document.body || document.documentElement;
         let dot = document.getElementById('nox-indicator');
-        if (!dot) {
+        if (!dot && bodyTarget) {
             dot = document.createElement('div');
             dot.id = 'nox-indicator';
             dot.addEventListener('click', onDotClick);
-            root.appendChild(dot);
+            bodyTarget.appendChild(dot);
         }
 
-        dot.dataset.state = status.ok ? 'ok' : 'err';
-        dot.dataset.hidden = indicatorHidden ? 'true' : 'false';
-        dot.title = 'Nox: ' + (status.ok ? 'ACTIVE' : 'ERROR') + ' — click for diagnostics in console';
+        if (dot) {
+            dot.dataset.state = status.ok ? 'ok' : 'err';
+            dot.dataset.hidden = indicatorHidden ? 'true' : 'false';
+            dot.title = 'Nox: ' + (status.ok ? 'ACTIVE' : 'ERROR') + ' — click for diagnostics in console';
+        }
     }
 
-    mountIndicator();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', mountIndicator);
+    } else {
+        mountIndicator();
+    }
 
     (function watchIndicator() {
         const root = document.documentElement;
         if (!root) { setTimeout(watchIndicator, 10); return; }
 
         new MutationObserver(function() {
-            if (!document.getElementById('nox-indicator')) {
+            if (!document.getElementById('nox-indicator') && (document.body || document.documentElement)) {
                 mountIndicator();
             }
         }).observe(root, { childList: true });
@@ -271,6 +286,12 @@
         return true;
     }
 
+    function isPlainObject(val) {
+        if (!val || typeof val !== 'object') return false;
+        const proto = Object.getPrototypeOf(val);
+        return proto === null || proto === Object.prototype;
+    }
+    
     // Boolean coercion for feature flags: number-typed switches are 1/0.
     // Do NOT use for non-boolean desired values (birthdate etc.).
     function coerceLike(sample, desired) {
@@ -278,7 +299,7 @@
         if (typeof sample === 'number') return desired ? 1 : 0;
         return desired;
     }
-
+    
     // General scalar coercion for non-boolean desired values: preserves
     // string/number typing of the stored value without truthiness
     // collapsing (coerceLike(1995, 1990) would return 1!).
@@ -370,7 +391,8 @@
     // or fail read-back are recorded in stats.writeFailed (diagnostics)
     // but do NOT fail the traversal — the dot reflects hook/traversal
     // health, diagnostics carry per-flag write outcomes.
-    function walk(obj, visited) {
+    function walk(obj, visited, maxDepth = DEFAULT_WALK_DEPTH, currentDepth = 0) {
+        if (currentDepth > maxDepth) return true;
         if (!isSafeObject(obj, visited)) return true;
 
         visited.add(obj);
@@ -440,7 +462,7 @@
                 try { child = obj[k]; } catch (e) { continue; }
 
                 if (isSafeObject(child, visited)) {
-                    if (!walk(child, visited)) ok = false;
+                    if (!walk(child, visited, maxDepth, currentDepth + 1)) ok = false;
                 }
             }
         } catch (e) {
@@ -452,8 +474,8 @@
     }
 
     // True = traversal completed with no internal patch error.
-    function patch(root) {
-        return walk(root, new WeakSet());
+    function patch(root, maxDepth = DEFAULT_WALK_DEPTH) {
+        return walk(root, new WeakSet(), maxDepth, 0);
     }
 
     function spoofAs(nativeFn, fn, name) {
@@ -462,6 +484,11 @@
         } catch (e) {}
         try {
             Object.defineProperty(fn, 'name', { value: name, configurable: true });
+        } catch (e) {}
+        try {
+            fn.toString = function() {
+                return nativeFn.toString();
+            };
         } catch (e) {}
     }
 
@@ -531,7 +558,7 @@
     function noxAssign(target) {
         const result = originalAssign.apply(this, arguments);
         try {
-            if (target && typeof target === 'object') {
+            if (isPlainObject(target)) {
                 if (target.featureSwitch || target.entities || target.users) {
                     stats.gateHits.assign++;
                     if (patch(target)) markOk();
@@ -571,6 +598,7 @@
     // Hook 4: Response.json — fetch responses parse internally and
     // bypass the JSON.parse hook. (response.text() → JSON.parse and
     // WebSocket frames → JSON.parse are already covered by Hook 3.)
+    // 
     // -----------------------------------------------------------------------
     try {
         if (window.Response && Response.prototype && typeof Response.prototype.json === 'function') {
