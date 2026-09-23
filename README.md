@@ -1017,6 +1017,9 @@ If X changes its frontend architecture or feature configuration, reports contain
 
 # 🔄 Version History
 
+<details>
+<summary>Expand version history (v2.4.1–v1.0)</summary>
+
 ## v2.4.1 — Current
 
 - Replace recursive patch traversal with an iterative walk, retaining deep-state and cycle coverage.
@@ -1317,6 +1320,8 @@ Added additional console information and debugging tools.
 - Initial release.
 - Basic client-side age-state patching.
 - Basic status indicator.
+
+</details>
 
 ---
 
