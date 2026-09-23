@@ -1,8 +1,18 @@
-# 🛡️ AgebypassX v2.4.0
+# 🛡️ AgebypassX v2.4.1
 
 A lightweight Tampermonkey userscript designed to modify X/Twitter's client-side age and sensitive-media feature state directly in the browser.
 
-AgebypassX v2.4.0 uses a **multi-layer state interception system** covering:
+## What's improved in 2.4.1
+
+This release focuses on reliability. It replaces recursive traversal with an iterative walk, keeps support for class-based and custom-prototype state, recognizes GraphQL feature entries in fetch responses, and restores the indicator and stylesheet after page changes.
+
+The same 29 simulated-browser tests passed **29/29 on 2.4.1**, compared with **20/29 on 2.4.0**. The suite includes a 20,000-level object graph and DOM replacement scenarios. These results demonstrate fixes for the tested cases; they do not establish faster scrolling or lower CPU usage on X. No before/after performance benchmark has been performed.
+
+A user-reported live check also confirmed working behavior with ACTIVE status, successful flag writes and no reported script errors. This is a functional smoke check, not a controlled comparison across browsers, accounts or regions. See [the test report](TEST-RESULTS.md) for the environment, coverage and remaining limits.
+
+---
+
+AgebypassX v2.4.1 uses a **multi-layer state interception system** covering:
 
 - `window.__INITIAL_STATE__`
 - `Object.assign`
@@ -116,7 +126,7 @@ GraphQL-style feature entries:
 }
 ```
 
-The patcher recursively searches relevant state objects while using a per-patch `WeakSet` to protect against circular references.
+The patcher searches relevant state objects with an iterative depth-first walk and a per-patch `WeakSet`. Deep state does not consume the JavaScript call stack, and circular references are visited only once per patch. There is no arbitrary nesting-depth cutoff on a full patch.
 
 ---
 
@@ -142,7 +152,7 @@ or occasionally:
 1
 ```
 
-AgebypassX v2.4.0 preserves the original representation when applying the desired boolean state.
+AgebypassX v2.4.1 preserves the original representation when applying the desired boolean state.
 
 Examples:
 
@@ -158,7 +168,7 @@ This avoids breaking frontend code which performs strict comparisons against the
 
 ## ✅ Verified Writes
 
-v2.4.0 no longer assumes that assigning a value means the write succeeded.
+Feature writes are verified instead of assuming that assignment succeeded.
 
 Target-feature modifications use a verified write process:
 
@@ -236,7 +246,7 @@ When X assigns its initial application state, the object is patched before the f
 
 Although the script runs at `document-start`, userscript injection timing can occasionally vary.
 
-v2.4.0 therefore checks whether:
+AgebypassX therefore checks whether:
 
 ```js
 window.__INITIAL_STATE__
@@ -276,7 +286,7 @@ entities
 users
 ```
 
-Relevant objects are patched after the native assignment completes.
+Relevant objects are patched after the native assignment completes. Class instances, arrays, custom prototypes, null-prototype objects and objects from other realms remain supported; the hook does not restrict state to plain objects.
 
 ---
 
@@ -290,7 +300,7 @@ AgebypassX wraps:
 JSON.parse
 ```
 
-Before recursively walking the parsed object, the original JSON text is checked using a single regular-expression gate.
+Before walking the parsed object, the original JSON text is checked using a single regular-expression gate.
 
 The gate looks for:
 
@@ -332,7 +342,9 @@ The current structural pre-scan depth is:
 5
 ```
 
-A full recursive patch only occurs when potentially relevant state is detected.
+A full patch only occurs when potentially relevant state is detected, including GraphQL entries whose known flag name appears in `feature` and whose value appears in `enabled`. Prototype names such as `constructor` and `toString` do not count as known flags.
+
+The depth-five limit applies only to the structural pre-scan. A response whose only relevant marker lies deeper than that can still be skipped. Once a gate matches, the full patch has no depth cutoff.
 
 ---
 
@@ -340,15 +352,17 @@ A full recursive patch only occurs when potentially relevant state is detected.
 
 AgebypassX is designed to avoid blindly scanning everything X creates.
 
+Version 2.4.1 improves traversal robustness, but no real-world speed improvement has been measured. Hook counters show how often patching is attempted, not how much CPU time it takes.
+
 ### Raw JSON Gate
 
-Before recursively walking data returned through `JSON.parse`, the script performs a single regex search for:
+Before walking data returned through `JSON.parse`, the script performs a single regex search for:
 
 - Target feature names.
 - `birthdate`
 - `featureSwitch`
 
-If none are present, no recursive patch is performed.
+If none are present, no full patch is performed.
 
 ### Fetch Response Gate
 
@@ -443,7 +457,7 @@ A successful later gated patch can restore the indicator to green after a transi
 
 🔴 **ERROR**
 
-A hook installation or recursive traversal operation encountered an error.
+A hook installation or object traversal operation encountered an error.
 
 Check the browser console for messages beginning with:
 
@@ -669,7 +683,7 @@ Click the status dot and open DevTools Console.
 You may see something similar to:
 
 ```text
-[Nox] diagnostics v2.4.0
+[Nox] diagnostics v2.4.1
 
 status: ACTIVE | total errors: 0
 
@@ -751,17 +765,9 @@ document-start
 
 the page DOM may not yet exist when execution begins.
 
-The indicator waits until:
+Hooks install immediately. The indicator waits for `document.body`, mounts the dot inside the body, and places its stylesheet in the head when available.
 
-```js
-document.documentElement
-```
-
-is available before mounting.
-
-A `MutationObserver` watches the document root for removal of the indicator.
-
-If the dot disappears, AgebypassX mounts it again.
+A `MutationObserver` watches direct children of the document, root, head and body. It restores a removed dot or stylesheet and reattaches to replacement containers during page updates. It does not observe every descendant mutation in the timeline, and no polling timer is required.
 
 ---
 
@@ -802,7 +808,7 @@ Search for:
 You should normally see messages similar to:
 
 ```text
-[Nox] v2.4.0 loaded
+[Nox] v2.4.1 loaded
 [Nox] ready — click the dot for diagnostics
 ```
 
@@ -885,6 +891,24 @@ and falls back to the hardcoded script version if unavailable.
 
 ---
 
+## 🧪 Simulated Browser Tests
+
+Development requires Node.js 20.19+, 22.13+, or 24+ within the supported major-version ranges in `package.json`.
+
+```sh
+npm ci --ignore-scripts
+npm run check
+npm test
+```
+
+The suite executes the complete userscript in isolated jsdom windows and tests its public hooks, DOM and click-to-print diagnostics. A per-window subclass of Node's native `Response` supplies real JSON parsing and body-consumption behavior because jsdom does not implement fetch.
+
+Coverage includes 20,000-level state, cycles, shared references, typed flag and birthdate writes, custom-prototype targets, throwing/frozen objects, parsing errors, response feature arrays, status recovery, document-start, indicator/style restoration, container replacement and the visibility hotkey. A timeline simulation verifies that 1,000 nested DOM insertions do not trigger the indicator observer.
+
+These tests do not establish live X compatibility, visual rendering, userscript-manager injection behavior or any performance improvement on a real timeline. The userscript itself has no npm/runtime dependency; jsdom is used only for development tests.
+
+---
+
 ## 🧪 Debugging
 
 Open DevTools and filter for:
@@ -896,7 +920,7 @@ Open DevTools and filter for:
 ### Script Startup
 
 ```text
-[Nox] v2.4.0 loaded
+[Nox] v2.4.1 loaded
 ```
 
 The userscript has started executing.
@@ -987,13 +1011,22 @@ GitHub:
 
 https://github.com/Saganaki22/AgebypassX
 
-If X changes its frontend architecture or feature configuration, reports containing the new v2.4.0 diagnostic counters can help identify what changed.
+If X changes its frontend architecture or feature configuration, reports containing the diagnostic counters can help identify what changed.
 
 ---
 
 # 🔄 Version History
 
-## v2.4.0 — Current
+## v2.4.1 — Current
+
+- Replace recursive patch traversal with an iterative walk, retaining deep-state and cycle coverage.
+- Preserve all existing state-object types handled by `Object.assign`.
+- Recognize GraphQL feature-array entries in the fetch-response gate and use own-property checks for known flag names.
+- Avoid repeatedly scanning shared/cyclic response branches while preserving shorter-path coverage.
+- Mount the indicator only after the body exists; restore the dot and stylesheet after removal or container replacement.
+- Add simulated-browser regression tests and keep native function compatibility limited to names and arities.
+
+## v2.4.0
 
 ### 🔢 Type-Preserving Feature Writes
 
