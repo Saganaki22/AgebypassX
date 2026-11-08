@@ -50,6 +50,167 @@ function diagnostics(env) {
   };
 }
 
+const xApi = 'https://x.com/i/api/graphql/example/TweetDetail';
+const photo = () => ({ type: 'photo', media_url_https: 'https://pbs.twimg.com/media/example.jpg',
+  sensitive_media_warning: { adult_content: true },
+  media_results: { result: { media_visibility_results: { blurred_image_interstitial: { reason: 'Sensitive' }, other: 7 } } }
+});
+const deepMedia = media => ({ data: { timeline: { instructions: [{ entries: [{ content: {
+  itemContent: { tweet_results: { result: { legacy: { extended_entities: { media: [media] } } } } }
+} }] }] } } });
+
+test('removes per-media warnings without any age flags and keeps the supplied media URL', t => {
+  const env = browser(t);
+  const media = photo();
+  const result = env.window.JSON.parse(JSON.stringify({ media, other: { sensitive_media_warning: { other: true } } }));
+  assert.equal(result.media.sensitive_media_warning, undefined);
+  assert.equal(result.media.media_results.result.media_visibility_results.blurred_image_interstitial, undefined);
+  assert.equal(result.media.media_results.result.media_visibility_results.other, 7);
+  assert.equal(result.media.media_url_https, media.media_url_https);
+  assert.equal(result.other.sensitive_media_warning.other, true);
+});
+
+test('leaves warnings intact if the media is unavailable or a video only has a thumbnail', t => {
+  const env = browser(t);
+  for (const overrides of [{ media_url_https: undefined }, { media_url_https: 'https://example.org/media.jpg' },
+    { type: 'video' }, { ext_media_availability: { status: 'Unavailable' } }]) {
+    const media = { ...photo(), ...overrides };
+    const result = env.window.JSON.parse(JSON.stringify(media));
+    assert.equal(result.sensitive_media_warning.adult_content, true);
+    assert.equal(result.media_results.result.media_visibility_results.blurred_image_interstitial.reason, 'Sensitive');
+  }
+});
+
+test('handles warnings below the shallow probe in native X API Response.json without altering other origins', async t => {
+  const env = browser(t);
+  for (const [url, expectedWarnings] of [[xApi, false], ['https://example.org/i/api/graphql/example/TweetDetail', true]]) {
+    const response = new env.window.Response(JSON.stringify(deepMedia(photo())));
+    Object.defineProperty(response, 'url', { value: url });
+    const result = await response.json();
+    assert.equal(JSON.stringify(result).includes('sensitive_media_warning'), expectedWarnings);
+    assert.equal(response.bodyUsed, true);
+  }
+});
+
+function postWithBlur(media) {
+  return {
+    __typename: 'TweetWithVisibilityResults',
+    tweet: { legacy: { extended_entities: { media } } },
+    mediaVisibilityResults: { blurred_image_interstitial: { opacity: 0.8, interstitial_action: 'AgeVerificationPrompt' } },
+    tweetInterstitial: { text: 'separate post notice' },
+  };
+}
+
+test('removes a post-level GraphQL blur when the response contains the media URL', async t => {
+  const env = browser(t);
+  const media = { type: 'photo', media_url_https: 'https://pbs.twimg.com/media/example.jpg' };
+  const payload = { data: { timeline: { instructions: [{ entries: [{ content: {
+    itemContent: { tweet_results: { result: postWithBlur([media]) } },
+  } }] }] } } };
+  const response = new env.window.Response(JSON.stringify(payload));
+  Object.defineProperty(response, 'url', { value: xApi });
+  const data = await response.json();
+  const result = data.data.timeline.instructions[0].entries[0].content.itemContent.tweet_results.result;
+  assert.equal(result.mediaVisibilityResults.blurred_image_interstitial, undefined);
+  assert.equal(result.tweet.legacy.extended_entities.media[0].media_url_https, media.media_url_https);
+  assert.equal(result.tweetInterstitial.text, 'separate post notice');
+});
+
+test('keeps the post-level blur when media is absent', t => {
+  const env = browser(t);
+  const post = postWithBlur([{ type: 'photo' }]);
+  const parsed = env.window.JSON.parse(JSON.stringify(post));
+  assert.equal(parsed.mediaVisibilityResults.blurred_image_interstitial.interstitial_action, 'AgeVerificationPrompt');
+});
+
+function modernPost(media) {
+  const post = postWithBlur(media);
+  post.tweet = { legacy: { possibly_sensitive: true }, media_entities2: media };
+  post.media_visibility_results = { ...post.mediaVisibilityResults, other: 'retained' };
+  delete post.mediaVisibilityResults;
+  return post;
+}
+
+test('handles Following timeline warnings on modern media and retains warnings without usable media', async t => {
+  const { window: w } = browser(t);
+  const video = {
+    type: 'video', media_url_https: 'https://pbs.twimg.com/media/poster.jpg',
+    video_info: { variants: [{ url: 'https://video.twimg.com/example.mp4' }] }
+  };
+  const { video_info, ...posterOnly } = video;
+  const posts = [modernPost([video]), modernPost([]), modernPost([posterOnly])];
+  const payload = { data: { home: { home_timeline_urt: { instructions: [{
+    entries: posts.map(result => ({ content: { itemContent: { tweet_results: { result } } } }))
+  }] } } } };
+  const response = new w.Response(JSON.stringify(payload));
+  Object.defineProperty(response, 'url', { value: 'https://api.x.com/graphql/example/HomeLatestTimelineQuery' });
+  const result = await response.json();
+  const entries = result.data.home.home_timeline_urt.instructions[0].entries;
+  const [playable, missing, poster] = entries.map(entry => entry.content.itemContent.tweet_results.result);
+  assert.deepEqual(playable.media_visibility_results, { other: 'retained' });
+  assert.deepEqual(playable.tweet.media_entities2, [video]);
+  for (const post of [missing, poster]) {
+    assert.equal(post.media_visibility_results.blurred_image_interstitial.interstitial_action, 'AgeVerificationPrompt');
+  }
+});
+
+test('handles both the initial and streamed TanStack references before an independent decoder reads them', t => {
+  const { window: w } = browser(t);
+  const media = { type: 'photo', media_url_https: 'https://pbs.twimg.com/media/example.jpg' };
+  w.fixture = JSON.stringify({ data: { tweetResult: modernPost([media]) } });
+  w.eval(`
+    (self.$R = self.$R || {})["tsr"] = [];
+    self.$_TSR = { router: null };
+    ($R => self.$_TSR.router = { dehydratedData: {
+      result: $R[1] = { kind: "Result.Ok", value: self.fixture }
+    } })(self.$R["tsr"]);
+    ($R => $R[2] = { next(chunk) { self.received = chunk; } })(self.$R["tsr"]);
+  `);
+  const initial = w.$_TSR.router.dehydratedData.result;
+  w.eval(`($R => $R[2].next($R[3] = { kind: 1, requestId: 3, key: "fixture",
+    result: $R[4] = { kind: "Result.Ok", value: self.fixture }
+  }))(self.$R["tsr"])`);
+  assert.equal(initial, w.$R.tsr[1]);
+  assert.equal(w.received, w.$R.tsr[3]);
+  assert.equal(w.received.result, w.$R.tsr[4]);
+  assert.equal(Array.isArray(w.$R.tsr), true);
+  for (const result of [initial, w.received.result]) {
+    const post = JSON.parse(result.value).data.tweetResult;
+    assert.deepEqual(post.media_visibility_results, { other: 'retained' });
+    assert.deepEqual(post.tweet.media_entities2, [media]);
+    assert.equal(post.tweetInterstitial.text, 'separate post notice');
+  }
+  w.eval('delete self.$R.tsr');
+  assert.equal(Object.hasOwn(w.$R, 'tsr'), false);
+});
+
+test('leaves malformed, failed, immutable and missing-media hydration results as supplied', t => {
+  const { window: w } = browser(t);
+  const available = JSON.stringify(modernPost([{ type: 'photo', media_url_https: 'https://pbs.twimg.com/media/example.jpg' }]));
+  const missing = JSON.stringify(modernPost([]));
+  w.$R.tsr = [];
+  const results = [
+    { kind: 'Result.Ok', value: '{"blurred_image_interstitial":' },
+    { kind: 'Result.Error', value: available },
+    Object.freeze({ kind: 'Result.Ok', value: available }),
+    { kind: 'Result.Ok', value: missing }
+  ];
+  const original = results.map(result => result.value);
+  w.$R.tsr.push(...results);
+  assert.deepEqual(Array.from(w.$R.tsr), results);
+  assert.deepEqual(results.map(result => result.value), original);
+});
+
+test('processes a populated TanStack reference table when injection arrives late', t => {
+  const raw = JSON.stringify(modernPost([{ type: 'photo', media_url_https: 'https://pbs.twimg.com/media/example.jpg' }]));
+  const first = { kind: 'Result.Ok', value: raw };
+  const { window: w } = browser(t, win => { win.$R = { tsr: [first], other: [] }; });
+  assert.equal(w.$R.tsr[0], first);
+  assert.doesNotMatch(first.value, /blurred_image_interstitial/);
+  w.$R.other[0] = { kind: 'Result.Ok', value: raw };
+  assert.equal(w.$R.other[0].value, raw);
+});
+
 test('patches every known flag in direct, wrapped and GraphQL forms without changing value types', t => {
   const env = browser(t);
   const state = [];

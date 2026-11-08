@@ -51,6 +51,8 @@
     // generous: a false negative here silently skips patching, while a
     // false positive only costs one walk.
     const JSON_SCAN_DEPTH = 5;
+    const MEDIA_WARNING_RE = /sensitive_media_warning|blurred_image_interstitial/;
+    const MAX_RESPONSE_TEXT_LENGTH = 4 * 1024 * 1024;
 
     const MAX_ERROR_LOG = 20;
     const MAX_UNKNOWN_LOG = 50;
@@ -74,6 +76,7 @@
     }
 
     const stats = {
+        mediaWarningsRemoved: 0,
         gateHits:    { state: 0, assign: 0, parse: 0, json: 0 },
         found:       zeroFlagCounts(),  // per flag: times encountered (pre-seeded so zeros are visible)
         changed:     zeroFlagCounts(),  // per flag: value actually moved AND read back correct
@@ -116,7 +119,7 @@
     // Gates
     // -----------------------------------------------------------------------
     const GATE_RE = new RegExp(
-        flagNames.join('|') + '|birthdate|featureSwitch'
+        flagNames.join('|') + '|birthdate|featureSwitch|' + MEDIA_WARNING_RE.source
     );
 
     function textMayContainFlags(text) {
@@ -194,6 +197,7 @@
         console.log('flags changed:', stats.changed);
         console.log('flag process/write failures:', stats.writeFailed);
         console.log('birthdate:', stats.birthdate);
+        console.log('media warnings removed:', stats.mediaWarningsRemoved);
 
         // How to read the counters above, per flag:
         //   found > 0, changed > 0, writeFailed = 0
@@ -393,7 +397,53 @@
         }
     }
 
+    function hasUsableMedia(obj) {
+        if (!obj || typeof obj !== 'object') return false;
+        const url = obj.media_url_https;
+        if (typeof url !== 'string' || !/^https:\/\/(?:pbs|video)\.twimg\.com\//.test(url)
+                || !['photo', 'video', 'animated_gif'].includes(obj.type)) return false;
+        const availability = obj.ext_media_availability && obj.ext_media_availability.status;
+        if (availability && availability !== 'Available') return false;
+        if (obj.type !== 'photo') {
+            const variants = obj.video_info && obj.video_info.variants;
+            if (!Array.isArray(variants) || !variants.some(variant => variant
+                    && /^https:\/\/video\.twimg\.com\//.test(variant.url))) return false;
+        }
+        return true;
+    }
+
+    function removeWarning(owner, key) {
+        if (owner && hasOwn.call(owner, key) && owner[key] && typeof owner[key] === 'object'
+                && Reflect.deleteProperty(owner, key)) stats.mediaWarningsRemoved++;
+    }
+
+    function removeMediaWarnings(obj) {
+        // GraphQL can attach the blur to a post wrapper instead of a media entry.
+        if (obj.__typename === 'TweetWithVisibilityResults' || (obj.tweet && obj.media_visibility_results)) {
+            const visibility = obj.media_visibility_results || obj.mediaVisibilityResults;
+            if (visibility && visibility.blurred_image_interstitial) {
+                const modernMedia = obj.tweet?.media_entities2;
+                const media = Array.isArray(modernMedia) && modernMedia.length
+                    ? modernMedia
+                    : obj.tweet?.legacy?.extended_entities?.media;
+                if (Array.isArray(media) && media.length && media.every(hasUsableMedia)) {
+                    removeWarning(visibility, 'blurred_image_interstitial');
+                }
+            }
+        }
+        // Only modify media entries with a usable X CDN URL.
+        if (!hasOwn.call(obj, 'sensitive_media_warning') && !hasOwn.call(obj, 'blurred_image_interstitial')
+                && !hasOwn.call(obj, 'media_visibility_results') && !hasOwn.call(obj, 'media_results')) return;
+        if (!hasUsableMedia(obj)) return;
+        removeWarning(obj, 'sensitive_media_warning');
+        removeWarning(obj, 'blurred_image_interstitial');
+        removeWarning(obj.media_visibility_results, 'blurred_image_interstitial');
+        const result = obj.media_results && obj.media_results.result;
+        if (result) removeWarning(result.media_visibility_results, 'blurred_image_interstitial');
+    }
+
     function patchObject(obj) {
+        removeMediaWarnings(obj);
         applyFlags(obj);
         scanForRelatedKeys(obj);
 
@@ -453,10 +503,11 @@
     // using the JS call stack. Each frame retains only its own key list.
     // True = traversal completed with no internal patch error.
     // Per-flag write failures remain separate diagnostics, not traversal errors.
-    function patch(root) {
+    function patch(root, mediaOnly = false) {
         const visited = new WeakSet();
         const stack = [{ obj: root, keys: null, index: 0 }];
         let ok = true;
+        let remaining = mediaOnly ? 50000 : Infinity;
 
         while (stack.length) {
             const frame = stack[stack.length - 1];
@@ -467,7 +518,9 @@
                         continue;
                     }
                     visited.add(frame.obj);
-                    patchObject(frame.obj);
+                    if (--remaining < 0) break;
+                    if (mediaOnly) removeMediaWarnings(frame.obj);
+                    else patchObject(frame.obj);
                     frame.keys = Object.keys(frame.obj);
                 }
 
@@ -583,7 +636,7 @@
     Object.assign = noxAssign;
 
     // -----------------------------------------------------------------------
-    // Hook 3: JSON.parse — gated on exact flag names in the raw text
+    // Hook 3: JSON.parse — gated on known flags and warning fields
     // -----------------------------------------------------------------------
     const originalParse = JSON.parse;
 
@@ -603,21 +656,87 @@
     spoofAs(originalParse, noxParse, 'parse');
     JSON.parse = noxParse;
 
+    const stringify = JSON.stringify;
+
+    function patchMediaText(raw) {
+        const data = originalParse(raw);
+        if (!data || typeof data !== 'object') return raw;
+        const before = stats.mediaWarningsRemoved;
+        patch(data, true);
+        return stats.mediaWarningsRemoved !== before ? stringify(data) : raw;
+    }
+
+    // X's TanStack page scripts store API results in the Seroval "tsr"
+    // reference table, including chunks delivered after the first paint.
+    // Patch a result before either the router or the stream receives it.
+    function patchHydrationResult(result) {
+        try {
+            if (!result || typeof result !== 'object' || result.kind !== 'Result.Ok') return;
+            const field = Object.getOwnPropertyDescriptor(result, 'value');
+            if (!field || !field.writable || typeof field.value !== 'string'
+                    || field.value.length > MAX_RESPONSE_TEXT_LENGTH || !MEDIA_WARNING_RE.test(field.value)) return;
+            const updated = patchMediaText(field.value);
+            if (updated !== field.value) result.value = updated;
+        } catch (e) { /* Leave an unexpected or immutable result alone. */ }
+    }
+
+    try {
+        const references = window.$R || (window.$R = {});
+        const existing = Object.getOwnPropertyDescriptor(references, 'tsr');
+        function watchReferences(table) {
+            if (!Array.isArray(table)) return table;
+            table.forEach(patchHydrationResult);
+            return new Proxy(table, {
+                set(target, key, value) {
+                    patchHydrationResult(value);
+                    return Reflect.set(target, key, value);
+                }
+            });
+        }
+        if (!existing) {
+            Object.defineProperty(references, 'tsr', {
+                configurable: true,
+                enumerable: true,
+                set(table) {
+                    Object.defineProperty(references, 'tsr', {
+                        configurable: true, enumerable: true, writable: true, value: watchReferences(table)
+                    });
+                }
+            });
+        } else if (existing.writable && Array.isArray(existing.value)) {
+            references.tsr = watchReferences(existing.value);
+        }
+    } catch (e) {
+        markError(e, 'Page hydration hook');
+    }
+
     // -----------------------------------------------------------------------
     // Hook 4: Response.json — fetch responses parse internally and
     // bypass the JSON.parse hook. (response.text() → JSON.parse and
     // WebSocket frames → JSON.parse are already covered by Hook 3.)
     // -----------------------------------------------------------------------
+    function isXApiUrl(value) {
+        try {
+            const url = new URL(value);
+            return url.protocol === 'https:' && /^(?:api\.|www\.)?(?:x|twitter)\.com$/.test(url.hostname)
+                && /^\/(?:i\/api\/|graphql\/|1\.1\/|2\/)/.test(url.pathname);
+        } catch (e) { return false; }
+    }
+
     try {
         if (window.Response && Response.prototype && typeof Response.prototype.json === 'function') {
             const originalJson = Response.prototype.json;
 
             function noxJson() {
-                return originalJson.apply(this, arguments).then(function(data) {
+                return originalJson.apply(this, arguments).then(data => {
                     try {
-                        if (data && typeof data === 'object' && objectMayContainFlags(data, JSON_SCAN_DEPTH)) {
-                            stats.gateHits.json++;
-                            if (patch(data)) markOk();
+                        if (data && typeof data === 'object') {
+                            if (objectMayContainFlags(data, JSON_SCAN_DEPTH)) {
+                                stats.gateHits.json++;
+                                if (patch(data)) markOk();
+                            } else if (isXApiUrl(this.url)) {
+                                patch(data, true);
+                            }
                         }
                     } catch (e) {
                         markError(e, 'Response.json patch');
